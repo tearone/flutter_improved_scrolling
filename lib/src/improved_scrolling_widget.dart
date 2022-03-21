@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_improved_scrolling/src/throttler.dart';
+import 'package:provider/provider.dart';
+import 'package:tearmusic/providers/global_keyboard_provider.dart';
 import 'config.dart';
 import 'custom_scroll_cursor.dart';
 
@@ -46,11 +48,15 @@ class ImprovedScrolling extends StatefulWidget {
     this.onScroll,
     this.onMMBScrollStateChanged,
     this.onMMBScrollCursorPositionUpdate,
+    this.scrollDirection = Axis.vertical,
     required this.child,
   }) : super(key: key);
 
   /// Scrollable child widget
   final Widget child;
+
+  /// Scroll direction
+  final Axis scrollDirection;
 
   /// The scroll controller must also be supplied
   /// to the wrapped scrollable widget.
@@ -107,7 +113,8 @@ class ImprovedScrolling extends StatefulWidget {
 
 class _ImprovedScrollingState extends State<ImprovedScrolling> {
   ScrollController get scrollController => widget.scrollController;
-  bool get isVerticalAxis => scrollController.position.axis == Axis.vertical;
+  // bool get isVerticalAxis => scrollController.position.axis == Axis.vertical;
+  bool get isVerticalAxis => widget.scrollDirection == Axis.vertical;
 
   final _middleMouseButtonId = 4;
   var _mmbScrollCursorActivity = MMBScrollCursorActivity.idle;
@@ -118,17 +125,15 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
   Timer? _mmbScrollingTimer;
 
   final _keyboardScrollFocusNode = FocusNode();
-  var _isShiftPressedDown = false;
+  bool get _isShiftPressedDown => Provider.of<GlobalKeyboardProvider>(context, listen: false).isShiftPressed;
 
   late final Throttler mouseWheelForwardThrottler;
   late final Throttler mouseWheelBackwardThrottler;
 
-  bool get isMMBScrollTimerActive =>
-      _mmbScrollingTimer != null && _mmbScrollingTimer!.isActive;
+  bool get isMMBScrollTimerActive => _mmbScrollingTimer != null && _mmbScrollingTimer!.isActive;
 
   double get mmbScrollNextAutoScrollAcceleration {
-    final lastVelocityByAxis =
-        isVerticalAxis ? _mmbScrollLastVelocity.dy : _mmbScrollLastVelocity.dx;
+    final lastVelocityByAxis = isVerticalAxis ? _mmbScrollLastVelocity.dy : _mmbScrollLastVelocity.dx;
     return lastVelocityByAxis.abs() / widget.mmbScrollConfig.decelerationForce;
   }
 
@@ -214,11 +219,11 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
     _mmbScrollLastVelocity += offset;
   }
 
-  void setShiftPressedDown(bool value) {
-    // setState() is not necessary here because
-    // this is not used inside the build() method
-    _isShiftPressedDown = value;
-  }
+  // void setShiftPressedDown(bool value) {
+  //   // setState() is not necessary here because
+  //   // this is not used inside the build() method
+  //   _isShiftPressedDown = value;
+  // }
 
   void mmbScrollBy(Offset delta) {
     if (!_mmbScrollActive) {
@@ -227,8 +232,7 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
     final currentOffset = scrollController.offset;
 
     final scrollDeltaByAxis = isVerticalAxis ? delta.dy : delta.dx;
-    final newScrollOffset =
-        currentOffset + scrollDeltaByAxis * mmbScrollNextAutoScrollAcceleration;
+    final newScrollOffset = currentOffset + scrollDeltaByAxis * mmbScrollNextAutoScrollAcceleration;
 
     final minScrollExtent = scrollController.position.minScrollExtent;
     final maxScrollExtent = scrollController.position.maxScrollExtent;
@@ -260,26 +264,17 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
       return;
     }
 
-    _mmbScrollingTimer =
-        Timer.periodic(widget.mmbScrollConfig.autoScrollDelay, (timer) {
+    _mmbScrollingTimer = Timer.periodic(widget.mmbScrollConfig.autoScrollDelay, (timer) {
       // Everything here is computed after this
       // callback is scheduled (in the future)
 
       // First check if the cursor is idle (is inside the start area)
-      final lastStartCursorPosByAxis = isVerticalAxis
-          ? _mmbScrollLastCursorStartPosition.dy
-          : _mmbScrollLastCursorStartPosition.dx;
+      final lastStartCursorPosByAxis = isVerticalAxis ? _mmbScrollLastCursorStartPosition.dy : _mmbScrollLastCursorStartPosition.dx;
 
-      final currentCursorPosByAxis = isVerticalAxis
-          ? _mmbScrollCurrentCursorPosition.dy
-          : _mmbScrollCurrentCursorPosition.dx;
+      final currentCursorPosByAxis = isVerticalAxis ? _mmbScrollCurrentCursorPosition.dy : _mmbScrollCurrentCursorPosition.dx;
 
-      final cursorIsWhereTheScrollStartedArea = currentCursorPosByAxis >
-              lastStartCursorPosByAxis -
-                  widget.mmbScrollConfig.idleCursorAreaSize / 2 &&
-          currentCursorPosByAxis <
-              lastStartCursorPosByAxis +
-                  widget.mmbScrollConfig.idleCursorAreaSize / 2;
+      final cursorIsWhereTheScrollStartedArea = currentCursorPosByAxis > lastStartCursorPosByAxis - widget.mmbScrollConfig.idleCursorAreaSize / 2 &&
+          currentCursorPosByAxis < lastStartCursorPosByAxis + widget.mmbScrollConfig.idleCursorAreaSize / 2;
 
       if (cursorIsWhereTheScrollStartedArea) {
         //
@@ -289,9 +284,7 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
         //
         // Else compute the next auto scrolling velocity using a percent of
         // the last velocity for an incremental scrolling effect.
-        final scrollingVelocity = event.delta +
-            _mmbScrollLastVelocity *
-                widget.mmbScrollConfig.velocityBackpropagationPercent;
+        final scrollingVelocity = event.delta + _mmbScrollLastVelocity * widget.mmbScrollConfig.velocityBackpropagationPercent;
 
         if (isVerticalAxis) {
           if (scrollingVelocity.dy > _mmbScrollLastVelocity.dy) {
@@ -336,9 +329,7 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
       onPointerDown: (event) {
         // Set the initial local position, cursor type and velocity
         // Triggers only when the input type is mouse and the button is MMB
-        if (widget.enableMMBScrolling &&
-            event.kind == PointerDeviceKind.mouse &&
-            event.buttons == _middleMouseButtonId) {
+        if (widget.enableMMBScrolling && event.kind == PointerDeviceKind.mouse && event.buttons == _middleMouseButtonId) {
           setMMBScrollActive(!_mmbScrollActive);
           setMMBScrollCursorStartScrollPosition(event.localPosition);
           setMMBScrollCursorPosition(event.localPosition);
@@ -362,9 +353,7 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
           performMMBAutoScrolling(event);
         }
 
-        if (widget.enableKeyboardScrolling &&
-            !_keyboardScrollFocusNode.hasFocus &&
-            event.kind == PointerDeviceKind.mouse) {
+        if (widget.enableKeyboardScrolling && !_keyboardScrollFocusNode.hasFocus && event.kind == PointerDeviceKind.mouse) {
           // Request focus in order to be able to use keyboard keys
           FocusScope.of(context).requestFocus(_keyboardScrollFocusNode);
         }
@@ -384,9 +373,11 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
         }
       },
       onPointerSignal: (event) {
-        if (widget.enableCustomMouseWheelScrolling &&
-            event is PointerScrollEvent &&
-            event.kind == PointerDeviceKind.mouse) {
+        if (widget.enableCustomMouseWheelScrolling && event is PointerScrollEvent && event.kind == PointerDeviceKind.mouse) {
+          if (isVerticalAxis && _isShiftPressedDown) {
+            return;
+          }
+
           if (!isVerticalAxis && !_isShiftPressedDown) {
             return;
           }
@@ -400,9 +391,7 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
           // which means they are somehow inverted)
           final scrollDelta = event.scrollDelta.dy;
 
-          final newOffset = scrollController.offset +
-              scrollDelta *
-                  widget.customMouseWheelScrollConfig.scrollAmountMultiplier;
+          final newOffset = scrollController.offset + scrollDelta * widget.customMouseWheelScrollConfig.scrollAmountMultiplier;
 
           final duration = widget.customMouseWheelScrollConfig.scrollDuration;
           final curve = widget.customMouseWheelScrollConfig.scrollCurve;
@@ -431,14 +420,10 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
           Positioned.fill(
             child: child,
           ),
-          if (widget.enableMMBScrolling &&
-              widget.mmbScrollConfig.customScrollCursor != null &&
-              _mmbScrollActive)
+          if (widget.enableMMBScrolling && widget.mmbScrollConfig.customScrollCursor != null && _mmbScrollActive)
             Positioned(
-              top: _mmbScrollCurrentCursorPosition.dy -
-                  widget.mmbScrollConfig.customScrollCursor!.size / 2,
-              left: _mmbScrollCurrentCursorPosition.dx -
-                  widget.mmbScrollConfig.customScrollCursor!.size / 2,
+              top: _mmbScrollCurrentCursorPosition.dy - widget.mmbScrollConfig.customScrollCursor!.size / 2,
+              left: _mmbScrollCurrentCursorPosition.dx - widget.mmbScrollConfig.customScrollCursor!.size / 2,
               child: SizedBox(
                 height: widget.mmbScrollConfig.customScrollCursor!.size,
                 width: widget.mmbScrollConfig.customScrollCursor!.size,
@@ -458,114 +443,107 @@ class _ImprovedScrollingState extends State<ImprovedScrolling> {
       );
     }
 
-    if (widget.enableKeyboardScrolling) {
-      final arrowsScrollAmount = widget.keyboardScrollConfig.arrowsScrollAmount;
-      final arrowsScrollDuration =
-          widget.keyboardScrollConfig.arrowsScrollDuration;
-      final pageUpDownScrollAmount =
-          widget.keyboardScrollConfig.pageUpDownScrollAmount;
-      final pageUpDownScrollDuration =
-          widget.keyboardScrollConfig.pageUpDownScrollDuration;
-      final spaceScrollAmount = widget.keyboardScrollConfig.spaceScrollAmount;
-      final spaceScrollDuration =
-          widget.keyboardScrollConfig.spaceScrollDuration;
-      final homeScrollDurationBuilder =
-          widget.keyboardScrollConfig.homeScrollDurationBuilder;
-      final endScrollDurationBuilder =
-          widget.keyboardScrollConfig.endScrollDurationBuilder;
-      final defaultHomeEndScrollDuration =
-          widget.keyboardScrollConfig.defaultHomeEndScrollDuration;
-      final curve = widget.keyboardScrollConfig.scrollCurve;
-
-      child = RawKeyboardListener(
-        focusNode: _keyboardScrollFocusNode,
-        onKey: (event) {
-          if (isVerticalAxis) {
-            if (event.isKeyPressed(LogicalKeyboardKey.arrowDown)) {
-              scrollController.animateTo(
-                scrollController.offset + arrowsScrollAmount,
-                duration: arrowsScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.arrowUp)) {
-              scrollController.animateTo(
-                scrollController.offset - arrowsScrollAmount,
-                duration: arrowsScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.pageUp)) {
-              scrollController.animateTo(
-                scrollController.offset - pageUpDownScrollAmount,
-                duration: pageUpDownScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.pageDown)) {
-              scrollController.animateTo(
-                scrollController.offset + pageUpDownScrollAmount,
-                duration: pageUpDownScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isShiftPressed &&
-                event.isKeyPressed(LogicalKeyboardKey.space)) {
-              scrollController.animateTo(
-                scrollController.offset - spaceScrollAmount,
-                duration: spaceScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.space)) {
-              scrollController.animateTo(
-                scrollController.offset + spaceScrollAmount,
-                duration: spaceScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.home)) {
-              scrollController.animateTo(
-                scrollController.position.minScrollExtent,
-                duration: homeScrollDurationBuilder?.call(
-                      scrollController.offset,
-                      scrollController.position.minScrollExtent,
-                    ) ??
-                    defaultHomeEndScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.end)) {
-              scrollController.animateTo(
-                scrollController.position.maxScrollExtent,
-                duration: endScrollDurationBuilder?.call(
-                      scrollController.offset,
-                      scrollController.position.maxScrollExtent,
-                    ) ??
-                    defaultHomeEndScrollDuration,
-                curve: curve,
-              );
-            }
-          } else {
-            //
-            // When direction is horizontal, only allow
-            // left and right arrow keys and shift-scrolling
-            if (event.isShiftPressed != _isShiftPressedDown) {
-              setShiftPressedDown(event.isShiftPressed);
-            }
-
-            if (event.isKeyPressed(LogicalKeyboardKey.arrowLeft)) {
-              scrollController.animateTo(
-                scrollController.offset - arrowsScrollAmount,
-                duration: arrowsScrollDuration,
-                curve: curve,
-              );
-            } else if (event.isKeyPressed(LogicalKeyboardKey.arrowRight)) {
-              scrollController.animateTo(
-                scrollController.offset + arrowsScrollAmount,
-                duration: arrowsScrollDuration,
-                curve: curve,
-              );
-            }
-          }
-        },
-        child: child,
-      );
-    }
     return child;
+
+    // if (widget.enableKeyboardScrolling) {
+    // final arrowsScrollAmount = widget.keyboardScrollConfig.arrowsScrollAmount;
+    // final arrowsScrollDuration = widget.keyboardScrollConfig.arrowsScrollDuration;
+    // final pageUpDownScrollAmount = widget.keyboardScrollConfig.pageUpDownScrollAmount;
+    // final pageUpDownScrollDuration = widget.keyboardScrollConfig.pageUpDownScrollDuration;
+    // final spaceScrollAmount = widget.keyboardScrollConfig.spaceScrollAmount;
+    // final spaceScrollDuration = widget.keyboardScrollConfig.spaceScrollDuration;
+    // final homeScrollDurationBuilder = widget.keyboardScrollConfig.homeScrollDurationBuilder;
+    // final endScrollDurationBuilder = widget.keyboardScrollConfig.endScrollDurationBuilder;
+    // final defaultHomeEndScrollDuration = widget.keyboardScrollConfig.defaultHomeEndScrollDuration;
+    // final curve = widget.keyboardScrollConfig.scrollCurve;
+
+    // return RawKeyboardListener(
+    //   focusNode: _keyboardScrollFocusNode,
+    //   onKey: (event) {
+    //     // When direction is horizontal, only allow
+    //     // left and right arrow keys and shift-scrolling
+    //     if (event.isShiftPressed != _isShiftPressedDown) {
+    //       setShiftPressedDown(event.isShiftPressed);
+    //     }
+
+    //     // if (widget.enableKeyboardScrolling) {
+    //     //   if (isVerticalAxis) {
+    //     //     if (event.isKeyPressed(LogicalKeyboardKey.arrowDown)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset + arrowsScrollAmount,
+    //     //         duration: arrowsScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.arrowUp)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset - arrowsScrollAmount,
+    //     //         duration: arrowsScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.pageUp)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset - pageUpDownScrollAmount,
+    //     //         duration: pageUpDownScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.pageDown)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset + pageUpDownScrollAmount,
+    //     //         duration: pageUpDownScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isShiftPressed && event.isKeyPressed(LogicalKeyboardKey.space)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset - spaceScrollAmount,
+    //     //         duration: spaceScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.space)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset + spaceScrollAmount,
+    //     //         duration: spaceScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.home)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.position.minScrollExtent,
+    //     //         duration: homeScrollDurationBuilder?.call(
+    //     //               scrollController.offset,
+    //     //               scrollController.position.minScrollExtent,
+    //     //             ) ??
+    //     //             defaultHomeEndScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.end)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.position.maxScrollExtent,
+    //     //         duration: endScrollDurationBuilder?.call(
+    //     //               scrollController.offset,
+    //     //               scrollController.position.maxScrollExtent,
+    //     //             ) ??
+    //     //             defaultHomeEndScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     }
+    //     //   } else {
+    //     //     if (event.isKeyPressed(LogicalKeyboardKey.arrowLeft)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset - arrowsScrollAmount,
+    //     //         duration: arrowsScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     } else if (event.isKeyPressed(LogicalKeyboardKey.arrowRight)) {
+    //     //       scrollController.animateTo(
+    //     //         scrollController.offset + arrowsScrollAmount,
+    //     //         duration: arrowsScrollDuration,
+    //     //         curve: curve,
+    //     //       );
+    //     //     }
+    //     //   }
+    //     // }
+    //   },
+    //   child: child,
+    // );
   }
 
   Widget buildMMBScrollingCustomCursor(CustomScrollCursor cursor) {
