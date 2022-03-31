@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_improved_scrolling/src/throttler.dart';
 import 'package:provider/provider.dart';
 import 'package:tearmusic/providers/global_keyboard_provider.dart';
